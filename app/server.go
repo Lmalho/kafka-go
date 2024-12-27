@@ -13,7 +13,7 @@ var _ = net.Listen
 var _ = os.Exit
 
 const (
-	UNSUPPORTED_VERSION = 35
+	UNSUPPORTED_VERSION int16 = 35
 )
 
 const (
@@ -85,9 +85,12 @@ func DecodeRequest(request []byte) Request {
 func responseService(request Request) Response {
 	var errorCode int16 = 0
 
-	if request.apiVersion > 4 {
+	if request.apiVersion < 0 || request.apiVersion > 4 {
 		errorCode = UNSUPPORTED_VERSION
 	}
+
+	fmt.Println(request.apiVersion)
+	fmt.Println(errorCode)
 
 	return Response{
 		size:          0,
