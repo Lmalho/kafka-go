@@ -12,12 +12,26 @@ import (
 var _ = net.Listen
 var _ = os.Exit
 
+const (
+	UNSUPPORTED_VERSION = 35
+)
+
+const (
+	API_VERSIONS = 18
+)
+
 type Response struct {
-	MessageSize       int32
-	RequestApiKey     int16
-	RequestApiVersion int16
-	CorrelationId     int32
-	Body              string
+	size          int32
+	correlationId int32
+	errorCode     int16
+}
+
+// Response structs
+type Request struct {
+	size          int32
+	apiKey        int16
+	apiVersion    int16
+	correlationId int32
 }
 
 func main() {
@@ -39,18 +53,53 @@ func main() {
 
 	defer c.Close()
 
-	buf := make([]byte, 1024)
-	n, err := c.Read(buf)
+	reqBuf := make([]byte, 1024)
+	n, err := c.Read(reqBuf)
 	if err != nil {
 		if err != io.EOF {
-
 			fmt.Println("Error reading from the connection")
 		}
 	}
 	fmt.Printf("Received %d bytes", n)
 
-	r := make([]byte, 8)
-	binary.BigEndian.PutUint32(r[0:4], 0)
-	copy(r[4:8], buf[8:12])
-	c.Write(r)
+	req := DecodeRequest(reqBuf)
+
+	res := responseService(req)
+
+	c.Write(res.Marshal())
+}
+
+// mesSize  apiKey  apiVersion  corrId
+// [0000]   [00]    [00]        [0000]  [...]
+
+func DecodeRequest(request []byte) Request {
+	req := Request{
+		size:          int32(binary.BigEndian.Uint32(request[0:4])),
+		apiKey:        int16(binary.BigEndian.Uint16(request[4:6])),
+		apiVersion:    int16(binary.BigEndian.Uint16(request[6:8])),
+		correlationId: int32(binary.BigEndian.Uint32(request[8:12])),
+	}
+	return req
+}
+
+func responseService(request Request) Response {
+	var errorCode int16 = 0
+
+	if request.apiVersion > 4 {
+		errorCode = UNSUPPORTED_VERSION
+	}
+
+	return Response{
+		size:          0,
+		correlationId: request.correlationId,
+		errorCode:     errorCode,
+	}
+}
+
+func (res *Response) Marshal() []byte {
+	r := make([]byte, 10)
+	binary.BigEndian.PutUint32(r[0:4], uint32(res.size))
+	binary.BigEndian.PutUint32(r[4:8], uint32(res.correlationId))
+	binary.BigEndian.PutUint16(r[8:10], uint16(res.errorCode))
+	return r
 }
