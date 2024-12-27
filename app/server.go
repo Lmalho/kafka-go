@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"os"
 )
@@ -11,15 +12,12 @@ import (
 var _ = net.Listen
 var _ = os.Exit
 
-type Header struct {
+type Response struct {
+	MessageSize       int32
 	RequestApiKey     int16
 	RequestApiVersion int16
 	CorrelationId     int32
-}
-type Response struct {
-	MessageSize int32
-	Header      Header
-	Body        string
+	Body              string
 }
 
 func main() {
@@ -41,9 +39,18 @@ func main() {
 
 	defer c.Close()
 
+	buf := make([]byte, 1024)
+	n, err := c.Read(buf)
+	if err != nil {
+		if err != io.EOF {
+
+			fmt.Println("Error reading from the connection")
+		}
+	}
+	fmt.Printf("Received %d bytes", n)
+
 	r := make([]byte, 8)
 	binary.BigEndian.PutUint32(r[0:4], 0)
-	binary.BigEndian.PutUint32(r[4:8], 7)
-
+	copy(r[4:8], buf[8:12])
 	c.Write(r)
 }
