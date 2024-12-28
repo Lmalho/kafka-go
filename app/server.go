@@ -17,13 +17,24 @@ const (
 )
 
 const (
-	API_VERSIONS = 18
+	API_VERSIONS int32 = 18
 )
 
-type Response struct {
-	size          int32
+type ApiVersionsResponse struct {
 	correlationId int32
-	errorCode     int16
+
+	errorCode int16
+
+	apiKeysLen uint8
+	apiKeys    []ApiKeys
+
+	throttleTimeMs int32
+}
+
+type ApiKeys struct {
+	apiKey     int16
+	minVersion int16
+	maxVersion int16
 }
 
 // Response structs
@@ -66,7 +77,12 @@ func main() {
 
 	res := responseService(req)
 
-	c.Write(res.Marshal())
+	Send(c, res.Marshal())
+}
+
+func Send(c net.Conn, resp []byte) {
+	binary.Write(c, binary.BigEndian, int32(len(resp)))
+	binary.Write(c, binary.BigEndian, resp)
 }
 
 // mesSize  apiKey  apiVersion  corrId
@@ -82,27 +98,42 @@ func DecodeRequest(request []byte) Request {
 	return req
 }
 
-func responseService(request Request) Response {
+func responseService(request Request) ApiVersionsResponse {
 	var errorCode int16 = 0
 
 	if request.apiVersion < 0 || request.apiVersion > 4 {
 		errorCode = UNSUPPORTED_VERSION
 	}
 
-	fmt.Println(request.apiVersion)
-	fmt.Println(errorCode)
-
-	return Response{
-		size:          0,
+	return ApiVersionsResponse{
 		correlationId: request.correlationId,
 		errorCode:     errorCode,
+
+		apiKeysLen: 2, // Kafka Compact length array, where 0 is null array, 1 is empty array
+		apiKeys: []ApiKeys{
+			{
+				apiKey:     18,
+				minVersion: 3,
+				maxVersion: 4,
+			},
+		},
+		throttleTimeMs: 0,
 	}
 }
 
-func (res *Response) Marshal() []byte {
-	r := make([]byte, 10)
-	binary.BigEndian.PutUint32(r[0:4], uint32(res.size))
-	binary.BigEndian.PutUint32(r[4:8], uint32(res.correlationId))
-	binary.BigEndian.PutUint16(r[8:10], uint16(res.errorCode))
+func (res *ApiVersionsResponse) Marshal() []byte {
+	r := make([]byte, 19)
+	binary.BigEndian.PutUint32(r, uint32(res.correlationId))
+	binary.BigEndian.PutUint16(r[4:6], uint16(res.errorCode))
+	r[6] = res.apiKeysLen
+
+	binary.BigEndian.PutUint16(r[7:9], uint16(res.apiKeys[0].apiKey))
+	binary.BigEndian.PutUint16(r[9:11], uint16(res.apiKeys[0].minVersion))
+	binary.BigEndian.PutUint16(r[11:13], uint16(res.apiKeys[0].maxVersion))
+
+	r[13] = 0 // TAG_BUFFER
+	binary.BigEndian.PutUint32(r[14:18], uint32(res.throttleTimeMs))
+	r[18] = 0 // TAG_BUFFER
+
 	return r
 }
