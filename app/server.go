@@ -8,10 +8,6 @@ import (
 	"os"
 )
 
-// Ensures gofmt doesn't remove the "net" and "os" imports in stage 1 (feel free to remove this!)
-var _ = net.Listen
-var _ = os.Exit
-
 const (
 	UNSUPPORTED_VERSION int16 = 35
 )
@@ -68,7 +64,7 @@ func (s *Server) Serve() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		s.Handle(c)
+		go s.Handle(c)
 	}
 }
 
