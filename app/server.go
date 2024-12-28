@@ -31,13 +31,7 @@ type ApiVersionsResponse struct {
 	throttleTimeMs int32
 }
 
-type ApiKeys struct {
-	apiKey     int16
-	minVersion int16
-	maxVersion int16
-}
-
-// Response structs
+// Response struct
 type Request struct {
 	size          int32
 	apiKey        int16
@@ -45,39 +39,58 @@ type Request struct {
 	correlationId int32
 }
 
-func main() {
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	fmt.Println("Logs from your program will appear here!")
+type ApiKeys struct {
+	apiKey     int16
+	minVersion int16
+	maxVersion int16
+}
 
-	// Uncomment this block to pass the first stage
-	//
+type Server struct {
+	net.Listener
+}
+
+func main() {
 	l, err := net.Listen("tcp", "0.0.0.0:9092")
 	if err != nil {
 		fmt.Println("Failed to bind to port 9092")
 		os.Exit(1)
 	}
-	c, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
 
-	defer c.Close()
+	fmt.Println("Listening on port 9092")
+	s := &Server{Listener: l}
+	s.Serve()
+}
 
-	reqBuf := make([]byte, 1024)
-	n, err := c.Read(reqBuf)
-	if err != nil {
-		if err != io.EOF {
-			fmt.Println("Error reading from the connection")
+func (s *Server) Serve() {
+	for {
+		c, err := s.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
 		}
+		s.Handle(c)
 	}
-	fmt.Printf("Received %d bytes", n)
+}
 
-	req := DecodeRequest(reqBuf)
+func (s *Server) Handle(conn net.Conn) {
+	defer conn.Close()
+	for {
+		reqBuf := make([]byte, 1024)
+		n, err := conn.Read(reqBuf)
+		if err != nil {
+			if err != io.EOF {
+				fmt.Println("Error reading from the connection")
+				os.Exit(1)
+			}
+		}
+		fmt.Printf("Received %d bytes \n", n)
 
-	res := responseService(req)
+		req := decodeRequest(reqBuf)
 
-	Send(c, res.Marshal())
+		res := responseService(req)
+
+		Send(conn, res.Marshal())
+	}
 }
 
 func Send(c net.Conn, resp []byte) {
@@ -88,7 +101,7 @@ func Send(c net.Conn, resp []byte) {
 // mesSize  apiKey  apiVersion  corrId
 // [0000]   [00]    [00]        [0000]  [...]
 
-func DecodeRequest(request []byte) Request {
+func decodeRequest(request []byte) Request {
 	req := Request{
 		size:          int32(binary.BigEndian.Uint32(request[0:4])),
 		apiKey:        int16(binary.BigEndian.Uint16(request[4:6])),
